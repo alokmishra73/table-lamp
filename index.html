@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Smart Lamp</title>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    :root {
+      /* Premium Minimal Color Variables */
+      --bg: #f8fafc;         /* Very light slate background */
+      --surface: #ffffff;    /* Pure white cards */
+      --border: #e2e8f0;     /* Soft slate borders */
+      --text: #0f172a;       /* Deep slate text */
+      --text-muted: #64748b; /* Medium slate text */
+      
+      /* Vibrant Accents */
+      --primary: #3b82f6;      /* Ocean Blue for setup buttons */
+      --primary-hover: #2563eb;
+      --warm-glow: #f59e0b;    /* Amber/Gold for Main Light */
+      --night-glow: #8b5cf6;   /* Violet for Ambient Light */
+      
+      --success: #10b981;
+      --danger: #ef4444;
+      --radius: 20px;
+      --transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
+    
+    body { background-color: var(--bg); color: var(--text); display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 1.5rem; }
+    
+    .app-container { width: 100%; max-width: 420px; position: relative; overflow: hidden; }
+    
+    /* Screen Transitions */
+    .screen { position: absolute; top: 0; left: 0; width: 100%; opacity: 0; visibility: hidden; transform: translateY(15px); transition: var(--transition); }
+    .screen.active { position: relative; opacity: 1; visibility: visible; transform: translateY(0); }
+
+    h1 { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.04em; margin-bottom: 0.5rem; color: var(--text); }
+    p.subtitle { color: var(--text-muted); font-size: 0.95rem; margin-bottom: 2.5rem; line-height: 1.4; }
+
+    /* Inputs */
+    .input-group { margin-bottom: 1.5rem; }
+    label { display: block; font-size: 0.75rem; font-weight: 700; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    input[type="text"] { width: 100%; background: var(--surface); border: 2px solid var(--border); color: var(--text); padding: 1rem 1.2rem; border-radius: 12px; font-size: 1rem; outline: none; transition: var(--transition); }
+    input[type="text"]:focus { border-color: var(--primary); box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1); }
+    input[type="text"]::placeholder { color: #9ca3af; }
+
+    /* Buttons */
+    button { width: 100%; background: var(--primary); color: #ffffff; border: none; padding: 1.1rem; border-radius: 14px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: var(--transition); box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25); }
+    button:hover { background: var(--primary-hover); }
+    button:active { transform: scale(0.98); box-shadow: 0 2px 6px rgba(59, 130, 246, 0.2); }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    
+    .btn-secondary { background: var(--surface); color: var(--text); border: 2px solid var(--border); margin-top: 1.5rem; box-shadow: none; font-weight: 600; }
+    .btn-secondary:hover { background: var(--bg); border-color: #cbd5e1; }
+    .btn-secondary:active { background: #e2e8f0; }
+
+    /* Status Bar */
+    .status-bar { display: flex; justify-content: space-between; align-items: center; padding-bottom: 1.5rem; margin-bottom: 1.5rem; }
+    .status-indicator { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); background: var(--surface); padding: 6px 14px; border-radius: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.03); }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background-color: var(--danger); transition: var(--transition); }
+    .dot.connected { background-color: var(--success); box-shadow: 0 0 8px rgba(16, 185, 129, 0.4); }
+
+    /* Control Cards */
+    .control-card { background: var(--surface); border-radius: var(--radius); padding: 1.5rem; margin-bottom: 1.25rem; display: flex; flex-direction: column; gap: 1rem; box-shadow: var(--shadow); border: 1px solid rgba(0,0,0,0.02); }
+    .card-header { display: flex; justify-content: space-between; align-items: center; }
+    .card-title { font-weight: 700; font-size: 1.15rem; color: var(--text); }
+    
+    /* Elegant Colored Toggle Switches */
+    .toggle { position: relative; width: 54px; height: 32px; background: var(--border); border-radius: 30px; cursor: pointer; transition: var(--transition); }
+    .toggle::after { content: ''; position: absolute; top: 4px; left: 4px; width: 24px; height: 24px; background: #ffffff; border-radius: 50%; transition: var(--transition); box-shadow: 0 2px 5px rgba(0,0,0,0.15); }
+    
+    /* Dynamic Toggle Colors */
+    #mainToggle.active { background: var(--warm-glow); box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3); }
+    #nightToggle.active { background: var(--night-glow); box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3); }
+    .toggle.active::after { transform: translateX(22px); }
+
+    /* Custom Minimal Slider with Warm Accents */
+    .slider-info { display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.75rem; text-transform: uppercase; letter-spacing: 0.02em; }
+    input[type="range"] { -webkit-appearance: none; width: 100%; height: 6px; background: var(--bg); border-radius: 4px; outline: none; margin: 12px 0; box-shadow: inset 0 1px 3px rgba(0,0,0,0.05); }
+    
+    /* Slider Thumb */
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 26px; height: 26px; border-radius: 50%; background: var(--surface); border: 3px solid var(--border); cursor: pointer; transition: var(--transition); box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    input[type="range"]::-webkit-slider-thumb:hover { border-color: var(--warm-glow); }
+    input[type="range"]::-webkit-slider-thumb:active { transform: scale(1.15); background: var(--warm-glow); border-color: var(--warm-glow); box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4); }
+    
+    input[type="range"]::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: var(--surface); border: 3px solid var(--border); cursor: pointer; transition: var(--transition); box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    input[type="range"]::-moz-range-thumb:hover { border-color: var(--warm-glow); }
+    input[type="range"]::-moz-range-thumb:active { background: var(--warm-glow); border-color: var(--warm-glow); box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4); }
+
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+    
+    <!-- SETUP SCREEN -->
+    <div id="setup-screen" class="screen active">
+      <h1>Configure Lamp</h1>
+      <p class="subtitle">Connect to your local network broker.</p>
+      
+      <div class="input-group">
+        <label for="brokerUrl">Broker URL</label>
+        <input type="text" id="brokerUrl" placeholder="wss://broker.emqx.io:8084/mqtt" autocomplete="off" />
+      </div>
+      <div class="input-group">
+        <label for="deviceId">Device ID</label>
+        <input type="text" id="deviceId" placeholder="lamp_d8f4..." autocomplete="off" />
+      </div>
+      
+      <button id="connectBtn" onclick="connectMQTT()">Connect System</button>
+    </div>
+
+    <!-- CONTROL SCREEN -->
+    <div id="control-screen" class="screen">
+      <div class="status-bar">
+        <div>
+          <h2 style="font-size: 1.4rem; font-weight: 800; color: var(--text);">Studio Desk</h2>
+        </div>
+        <div class="status-indicator">
+          <div id="statusDot" class="dot"></div>
+          <span id="statusText">Connecting</span>
+        </div>
+      </div>
+
+      <!-- Main Light -->
+      <div class="control-card">
+        <div class="card-header">
+          <span class="card-title">Main Light</span>
+          <div id="mainToggle" class="toggle" onclick="toggleMain()"></div>
+        </div>
+        <div style="margin-top: 1rem; border-top: 2px dashed var(--bg); padding-top: 1.25rem;">
+          <div class="slider-info">
+            <span>Brightness</span>
+            <span id="brightnessVal" style="color: var(--warm-glow);">100%</span>
+          </div>
+          <!-- MQTT logic untouched: UI updates on input, MQTT sends on change -->
+          <input type="range" id="brightnessSlider" min="0" max="255" value="255" />
+        </div>
+      </div>
+
+      <!-- Ambient/Night Light -->
+      <div class="control-card">
+        <div class="card-header">
+          <span class="card-title">Ambient Mode</span>
+          <div id="nightToggle" class="toggle" onclick="toggleNight()"></div>
+        </div>
+      </div>
+
+      <button class="btn-secondary" onclick="disconnect()">Disconnect</button>
+    </div>
+
+  </div>
+
+  <script>
+    let client = null;
+    let deviceId = "";
+    // Flag to handle the server echo delay smoothly
+    let ignoreNextServerBrightnessUpdate = false; 
+
+    window.onload = () => {
+      document.getElementById('brokerUrl').value = localStorage.getItem('lamp_broker') || "";
+      document.getElementById('deviceId').value = localStorage.getItem('lamp_id') || "";
+    };
+
+    function switchScreen(screenId) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById(screenId).classList.add('active');
+    }
+
+    function connectMQTT() {
+      const broker = document.getElementById('brokerUrl').value.trim();
+      deviceId = document.getElementById('deviceId').value.trim();
+
+      if (!broker || !deviceId) {
+        alert("Please enter both Broker URL and Device ID.");
+        return;
+      }
+
+      localStorage.setItem('lamp_broker', broker);
+      localStorage.setItem('lamp_id', deviceId);
+
+      document.getElementById('connectBtn').innerText = "Connecting...";
+      document.getElementById('connectBtn').disabled = true;
+
+      const clientId = 'web_' + Math.random().toString(16).substring(2, 10);
+      
+      client = mqtt.connect(broker, { clientId: clientId, clean: true });
+
+      client.on('connect', () => {
+        switchScreen('control-screen');
+        document.getElementById('statusDot').classList.add('connected');
+        document.getElementById('statusText').innerText = "Online";
+        
+        document.getElementById('connectBtn').innerText = "Connect System";
+        document.getElementById('connectBtn').disabled = false;
+
+        client.subscribe(`smartlamp/${deviceId}/status`);
+      });
+
+      client.on('error', (err) => {
+        alert("Connection failed. Check broker URL.");
+        disconnect();
+      });
+
+      client.on('close', () => {
+        document.getElementById('statusDot').classList.remove('connected');
+        document.getElementById('statusText').innerText = "Offline";
+      });
+
+      client.on('message', (topic, payload) => {
+        try {
+          const data = JSON.parse(payload.toString());
+          
+          if (data.main !== undefined) {
+            const t = document.getElementById('mainToggle');
+            data.main ? t.classList.add('active') : t.classList.remove('active');
+          }
+          
+          if (data.night !== undefined) {
+            const t = document.getElementById('nightToggle');
+            data.night ? t.classList.add('active') : t.classList.remove('active');
+          }
+          
+          if (data.brightness !== undefined) {
+            if (ignoreNextServerBrightnessUpdate) {
+              ignoreNextServerBrightnessUpdate = false; 
+            } else {
+              document.getElementById('brightnessSlider').value = data.brightness;
+              document.getElementById('brightnessVal').innerText = Math.round((data.brightness / 255) * 100) + '%';
+            }
+          }
+        } catch (e) {}
+      });
+    }
+
+    function disconnect() {
+      if (client) client.end();
+      switchScreen('setup-screen');
+    }
+
+    function toggleMain() {
+      const toggle = document.getElementById('mainToggle');
+      const newState = !toggle.classList.contains('active');
+      toggle.classList.toggle('active', newState);
+      if (client) client.publish(`smartlamp/${deviceId}/lamp/set`, newState ? "ON" : "OFF");
+    }
+
+    function toggleNight() {
+      const toggle = document.getElementById('nightToggle');
+      const newState = !toggle.classList.contains('active');
+      toggle.classList.toggle('active', newState);
+      if (client) client.publish(`smartlamp/${deviceId}/nightlamp/set`, newState ? "ON" : "OFF");
+    }
+
+    // --- ROCK SOLID SLIDER LOGIC ---
+    const slider = document.getElementById('brightnessSlider');
+
+    // Update UI instantly on drag without network spam
+    slider.addEventListener('input', (e) => {
+      const val = e.target.value;
+      document.getElementById('brightnessVal').innerText = Math.round((val / 255) * 100) + '%';
+    });
+
+    // Send payload over network ONLY when dragging stops
+    slider.addEventListener('change', (e) => {
+      const val = e.target.value;
+      if (client && client.connected) {
+        ignoreNextServerBrightnessUpdate = true;
+        client.publish(`smartlamp/${deviceId}/brightness/set`, val.toString());
+      }
+    });
+
+  </script>
+</body>
+</html>
